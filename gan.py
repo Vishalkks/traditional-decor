@@ -4,7 +4,6 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
-from keras.utils.vis_utils import plot_model
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
@@ -40,7 +39,6 @@ class GAN():
 		# combined model  (stacked generator and discriminator) takes noise as input => generates images => determines validity
 		self.combined = Model(z, valid)
 		self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
-		plot_model(self.combined,"architecture.png",show_layer_names=True)
 		
 		
 	def build_generator(self):
@@ -62,7 +60,6 @@ class GAN():
 		model.add(Reshape(self.img_shape))
 
 		model.summary()
-		plot_model(model, "generator.png", show_layer_names=True)
 		noise = Input(shape=noise_shape)
 		img = model(noise)
 
@@ -84,7 +81,6 @@ class GAN():
 
 		img = Input(shape=img_shape)
 		validity = model(img)
-		plot_model(model, "discriminator.png", show_layer_names=True)
 		return Model(img, validity)
 		
 	def train(self, epochs, batch_size=2, sample_interval=10):
@@ -93,7 +89,7 @@ class GAN():
 		(X_train) = self.get_data()
 
 		# rescale -1 to 1
-		#X_train = (X_train.astype(np.float32) - 127.5) / 127.5
+		X_train = (X_train.astype(np.float32) - 127.5) / 127.5
 		#X_train = np.expand_dims(X_train, axis=3)
 		
 		half_batch = int(batch_size / 2)
@@ -133,7 +129,7 @@ class GAN():
 				self.sample_images(epoch)
 				
 	def sample_images(self, epoch):
-		r, c = 5, 5
+		r, c = 1, 1
 		noise = np.random.normal(0, 1, (r * c, 100))
 		gen_imgs = self.generator.predict(noise)
 
@@ -141,23 +137,18 @@ class GAN():
 		print(gen_imgs)
 		gen_imgs = 0.5 * gen_imgs + 0.5
 		print(gen_imgs.shape)
-		plt.figure(figsize=(5, 5))
-		plt.imshow(gen_imgs[0])
-		plt.plot()
-		plt.show()
+
 		fig, axs = plt.subplots(r, c)
-		cnt = 0
-		for i in range(r):
-			for j in range(c):
-				axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='jet')
-				axs[i,j].axis('off')
-				cnt += 1
+		
+		axs.imshow(gen_imgs[0, :,:,0], cmap='jet')
+		axs.axis('off')
+		
 		print("Generating image")
 		fig.savefig("images/generated_%d.png" % epoch)
 		plt.close()
 		
 	def get_data(self):
-		f = h5py.File('DecorColorImages.h5', 'r')
+		f = h5py.File('imageweights.h5', 'r')
 		
 		keys = list(f.keys())
 		print(keys)
@@ -165,13 +156,21 @@ class GAN():
 		images = np.array(f[keys[2]])
 		
 		print('Image shape:', images.shape)
-		images = images.astype('float32') / 255
 		
-		numImages = 2
-		imagesToSend = []
+		numImages = 1
 		
 		return images[:numImages]
 		
 if __name__ == '__main__':
 	gan = GAN()
-	gan.train(epochs=100, batch_size=32, sample_interval=10)
+	gan.train(epochs=1000, batch_size=32, sample_interval=50)
+	
+	#---Saving the Generator Model---
+	# serialize model to JSON
+	generator_json = gan.generator.to_json()
+	with open("generator_model.json", "w") as json_file:
+	    json_file.write(generator_json)
+	# serialize weights to HDF5
+	gan.generator.save_weights("generator_json.h5")
+	print("Saved generator model to disk")
+
