@@ -4,6 +4,10 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
+from keras.applications.vgg16 import VGG16
+from keras.applications.vgg16 import preprocess_input
+import numpy as np
+
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
@@ -68,10 +72,15 @@ class GAN():
 	def build_discriminator(self):
 
 		img_shape = (self.img_rows, self.img_cols,self.img_depth)
-
+		
+		pretrainedmodel = VGG16(weights='imagenet', include_top=False, input_shape=img_shape)
+		pretrainedmodel.layers.pop()
+		pretrainedmodel.layers.pop()
+		
 		model = Sequential()
-
-		model.add(Flatten(input_shape=img_shape))
+		for l in pretrainedmodel.layers:
+			model.add(l)
+		model.add(Flatten(input_shape=pretrainedmodel.output_shape[1:]))
 		model.add(Dense(512))
 		model.add(LeakyReLU(alpha=0.2))
 		model.add(Dense(256))
@@ -163,7 +172,7 @@ class GAN():
 		
 if __name__ == '__main__':
 	gan = GAN()
-	gan.train(epochs=1000, batch_size=32, sample_interval=50)
+	gan.train(epochs=200, batch_size=32, sample_interval=50)
 	
 	#---Saving the Generator Model---
 	# serialize model to JSON
