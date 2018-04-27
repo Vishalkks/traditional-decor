@@ -7,6 +7,8 @@ from keras.optimizers import Adam
 from keras.applications.vgg16 import VGG16
 from keras.applications.vgg16 import preprocess_input
 import numpy as np
+from keras.layers import MaxPooling2D
+from PIL import Image
 
 import h5py
 import numpy as np
@@ -48,7 +50,7 @@ class GAN():
 	def build_generator(self):
 
 		noise_shape = (100,)
-
+		'''
 		model = Sequential()
 
 		model.add(Dense(256, input_shape=noise_shape))
@@ -62,7 +64,21 @@ class GAN():
 		model.add(BatchNormalization(momentum=0.8))
 		model.add(Dense(np.prod(self.img_shape), activation='tanh'))
 		model.add(Reshape(self.img_shape))
-
+		'''
+		model = Sequential()
+		model.add(Dense(256, input_shape=noise_shape))
+		model.add(Activation('tanh'))
+		model.add(Dense(128 * 25 * 25))
+		model.add(BatchNormalization())
+		model.add(Activation('tanh'))
+		model.add(Reshape((25, 25, 128), input_shape=(128 * 25 * 25,)))
+		model.add(UpSampling2D(size=(2, 2)))
+		model.add(Conv2D(64, (5, 5), padding='same'))
+		model.add(Activation('tanh'))
+		model.add(UpSampling2D(size=(3, 3)))
+		model.add(Conv2D(3, (5, 5), padding='same'))
+		model.add(Activation('tanh'))
+		
 		model.summary()
 		noise = Input(shape=noise_shape)
 		img = model(noise)
@@ -72,22 +88,34 @@ class GAN():
 	def build_discriminator(self):
 
 		img_shape = (self.img_rows, self.img_cols,self.img_depth)
-		
-		pretrainedmodel = VGG16(weights='imagenet', include_top=False, input_shape=img_shape)
-		pretrainedmodel.layers.pop()
-		pretrainedmodel.layers.pop()
-		
+		'''
 		model = Sequential()
-		for l in pretrainedmodel.layers:
-			model.add(l)
-		model.add(Flatten(input_shape=pretrainedmodel.output_shape[1:]))
+		model.add(Flatten(input_shape=img_shape))
 		model.add(Dense(512))
 		model.add(LeakyReLU(alpha=0.2))
 		model.add(Dense(256))
 		model.add(LeakyReLU(alpha=0.2))
 		model.add(Dense(1, activation='sigmoid'))
 		model.summary()
-
+		
+		'''
+		model = Sequential()
+		model.add(
+			Conv2D(64, (5, 5),
+			       padding='same',
+			       input_shape=self.img_shape)
+		)
+		model.add(Activation('tanh'))
+		model.add(MaxPooling2D(pool_size=(2, 2)))
+		model.add(Conv2D(128, (5, 5)))
+		model.add(Activation('tanh'))
+		model.add(MaxPooling2D(pool_size=(2, 2)))
+		model.add(Flatten())
+		model.add(Dense(1024))
+		model.add(Activation('tanh'))
+		model.add(Dense(1))
+		model.add(Activation('sigmoid'))
+		
 		img = Input(shape=img_shape)
 		validity = model(img)
 		return Model(img, validity)
@@ -116,6 +144,7 @@ class GAN():
 			gen_imgs = self.generator.predict(noise)
 
 			# train discriminator
+			self.discriminator.trainable = True
 			d_loss_real = self.discriminator.train_on_batch(imgs, np.ones((half_batch, 1)))
 			d_loss_fake = self.discriminator.train_on_batch(gen_imgs, np.zeros((half_batch, 1)))
 			d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
@@ -126,7 +155,8 @@ class GAN():
 
 			# the generator wants the discriminator to label the generated samples as valid (ones)
 			valid_y = np.array([1] * batch_size)
-
+			
+			self.discriminator.trainable = False
 			# train the generator
 			g_loss = self.combined.train_on_batch(noise, valid_y)
 
@@ -147,14 +177,17 @@ class GAN():
 		gen_imgs = 0.5 * gen_imgs + 0.5
 		print(gen_imgs.shape)
 
-		fig, axs = plt.subplots(r, c)
+		'''fig, axs = plt.subplots(r, c)
 		
 		axs.imshow(gen_imgs[0, :,:,0], cmap='jet')
 		axs.axis('off')
 		
 		print("Generating image")
 		fig.savefig("images/generated_%d.png" % epoch)
-		plt.close()
+		plt.close()'''
+		img = Image.fromarray(gen_imgs, 'RGBA')
+		img.save("images/generated_%d.png" % epoch)
+		img.show()
 		
 	def get_data(self):
 		f = h5py.File('imageweights.h5', 'r')
@@ -166,19 +199,22 @@ class GAN():
 		
 		print('Image shape:', images.shape)
 		
-		numImages = 1
+		ghzel_images = [f[keys[2]][i] for i in range(0, len(f[keys[2]])) if f[keys[1]][i] == 1]
+		images = np.array(ghzel_images)
+		
+		numImages = len(images)
 		
 		return images[:numImages]
 		
 if __name__ == '__main__':
 	gan = GAN()
-	gan.train(epochs=200, batch_size=32, sample_interval=50)
+	gan.train(epochs=500, batch_size=32, sample_interval=30)
 	
 	#---Saving the Generator Model---
 	# serialize model to JSON
 	generator_json = gan.generator.to_json()
 	with open("generator_model.json", "w") as json_file:
-	    json_file.write(generator_json)
+		json_file.write(generator_json)
 	# serialize weights to HDF5
 	gan.generator.save_weights("generator_json.h5")
 	print("Saved generator model to disk")
